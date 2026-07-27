@@ -12,9 +12,11 @@ from __future__ import annotations
 import asyncio
 import getpass
 import json
+import logging
 import os
 import socket
 import subprocess
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +25,10 @@ from typing import Any, Protocol
 WIRE_PROTOCOL_VERSION = "0.4.0"
 DEFAULT_VAULT_TITLE = "OVID Agents"
 DEFAULT_TTL_SECONDS = 1800
+
+# Log records may leave the process (files, collectors): identity, mandate, and
+# public-key material are fine to log; private keys must never reach a record.
+logger = logging.getLogger("ovid_identity")
 
 
 class OvidCliError(RuntimeError):
@@ -152,10 +158,12 @@ class OvidCli:
             raise OvidCliError(
                 f"no ovid4j CLI jar under {root / 'target'} — build it with: mvn -f {root} package"
             )
+        logger.debug("using ovid4j CLI jar %s", jars[-1])
         return cls(jar_path=jars[-1])
 
     def keygen(self) -> KeyPair:
         output = self._run("keygen", {})
+        logger.info("generated Ed25519 keypair (public key %s)", output["publicKey"])
         return KeyPair(public_key=output["publicKey"], private_key=output["privateKey"])
 
     def create_root(
@@ -178,12 +186,16 @@ class OvidCli:
         return self._run("cedar", {"policySet": policy_set})
 
     def _run(self, command: str, payload: dict[str, Any]) -> dict[str, Any]:
+        # Payloads and outputs may carry private keys — log only command + timing.
+        started = time.monotonic()
         result = subprocess.run(
             ["java", "-jar", str(self.jar_path), command],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
         )
+        elapsed_ms = (time.monotonic() - started) * 1000
+        logger.debug("ovid4j %s: exit %d in %.0fms", command, result.returncode, elapsed_ms)
         try:
             output = json.loads(result.stdout)
         except json.JSONDecodeError as error:
@@ -242,6 +254,7 @@ class OnePasswordRegistry:
     async def _vault_id(self, client: Any) -> str:
         for vault in await client.vaults.list():
             if vault.title == self.vault_title:
+                logger.debug('resolved 1Password vault "%s" -> %s', self.vault_title, vault.id)
                 return vault.id
         raise RegistryError(
             f'vault "{self.vault_title}" not found — create it in 1Password and grant '
@@ -253,7 +266,9 @@ class OnePasswordRegistry:
         vault_id = await self._vault_id(client)
         overview = await self._find_overview(client, vault_id, unique_name)
         if overview is None:
+            logger.info('no 1Password item for "%s" — agent is unregistered', unique_name)
             return None
+        logger.info('loaded 1Password item for "%s" (item %s)', unique_name, overview.id)
         item = await client.items.get(vault_id, overview.id)
         fields = {field.id: field.value for field in item.fields}
         try:
@@ -282,6 +297,7 @@ class OnePasswordRegistry:
         vault_id = await self._vault_id(client)
         if await self._find_overview(client, vault_id, agent.unique_name) is not None:
             raise RegistryError(f'agent "{agent.unique_name}" is already registered')
+        logger.info('registering "%s" in 1Password vault "%s"', agent.unique_name, self.vault_title)
         await client.items.create(
             ItemCreateParams(
                 title=agent.unique_name,
@@ -324,6 +340,7 @@ class OnePasswordRegistry:
         if overview is None:
             raise RegistryError(f'agent "{unique_name}" is not registered')
         await client.items.delete(vault_id, overview.id)
+        logger.info('deleted 1Password item for "%s"', unique_name)
 
     @staticmethod
     async def _find_overview(client: Any, vault_id: str, title: str) -> Any | None:
@@ -353,6 +370,8 @@ def bootstrap_root_identity(
     """
     unique_name = agent_unique_name(script_path)
     policy_set = infer_policy_set(tool_names)
+    logger.info('bootstrapping OVID root identity "%s"', unique_name)
+    logger.debug("inferred mandate from tools %s:\n%s", sorted(tool_names), policy_set)
 
     existing = registry.find(unique_name)
     if existing is None:
@@ -367,6 +386,13 @@ def bootstrap_root_identity(
         )
     else:
         keys = existing.keys
+        logger.info("reusing registered key (public key %s)", keys.public_key)
+        if existing.policy_set != policy_set:
+            logger.warning(
+                'tool set of "%s" changed since registration — minting with the current '
+                "mandate; the registry copy is stale",
+                unique_name,
+            )
 
     minted = cli.create_root(unique_name, policy_set, keys, ttl_seconds=ttl_seconds)
     verified = cli.verify(minted["jwt"], [keys.public_key])
@@ -375,6 +401,11 @@ def bootstrap_root_identity(
             f'freshly minted root token for "{unique_name}" failed self-verification — '
             "the registered key material is corrupt; delete the registry item to re-register"
         )
+    logger.info(
+        "minted and self-verified root token (ttl %ds, expires at %d)",
+        ttl_seconds,
+        int(minted["exp"]),
+    )
 
     return RootIdentity(
         unique_name=unique_name,

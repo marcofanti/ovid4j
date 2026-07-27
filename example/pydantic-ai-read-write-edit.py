@@ -1,3 +1,5 @@
+import logging
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,17 @@ from ovid_identity import (
 )
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+logger = logging.getLogger("read_write_shell_agent")
+
+
+def configure_logging() -> None:
+    """Timestamped logs to stderr; LOG_LEVEL=DEBUG adds CLI timings and mandates."""
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
 
 def build_agent(
@@ -79,6 +92,7 @@ def build_agent(
 
 
 def main(user_prompt: str) -> None:
+    configure_logging()
     agent = build_agent()
 
     # This program is an OVID root: its identity is this file on this machine,
@@ -89,13 +103,11 @@ def main(user_prompt: str) -> None:
         registry=OnePasswordRegistry(),
         cli=OvidCli.locate(),
     )
-    print(f"OVID root: {identity.unique_name}")
-    print(
-        f"  registered: {'new' if identity.newly_registered else 'existing'}"
-        f" · token expires at {identity.expires_at}"
+    logger.info(
+        "running as OVID root %s (%s registration)",
+        identity.unique_name,
+        "new" if identity.newly_registered else "existing",
     )
-    if identity.policy_drift:
-        print("  WARNING: tool set changed since registration — registry mandate is stale")
 
     result = agent.run_sync(user_prompt, event_stream_handler=make_event_stream_printer())
     print_response(result.output)
