@@ -3,3 +3,7 @@ target/
 *.iml
 .vscode/
 node_modules/
+
+# Local session notes for the AgenticAI workspace, not part of the library
+Claude.md
+Summary.md
