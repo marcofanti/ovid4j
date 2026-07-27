@@ -1,8 +1,8 @@
 // ovid4j — Java port of OVID (https://github.com/clawdreyhepburn/ovid), Apache-2.0.
-package io.github.mfanti.ovid4j;
+package io.github.marcofanti.ovid4j;
 
-import static io.github.mfanti.ovid4j.TestSupport.readMandate;
-import static io.github.mfanti.ovid4j.TestSupport.rootOptions;
+import static io.github.marcofanti.ovid4j.TestSupport.readMandate;
+import static io.github.marcofanti.ovid4j.TestSupport.rootOptions;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;

@@ -22,7 +22,7 @@ Single runtime dependency: Jackson (`jackson-databind`) for JWT claims JSON.
 ## Quick start
 
 ```java
-import io.github.mfanti.ovid4j.*;
+import io.github.marcofanti.ovid4j.*;
 import java.security.KeyPair;
 
 // Primary agent creates a keypair (do this once, persist it)
@@ -64,7 +64,7 @@ OvidToken helper = Ovid.createOvid(CreateOvidOptions.builder()
 Compile a structured intent into a Cedar policySet instead of writing raw Cedar:
 
 ```java
-import io.github.mfanti.ovid4j.MandateBuilder.*;
+import io.github.marcofanti.ovid4j.MandateBuilder.*;
 
 BuildResult mandate = MandateBuilder.buildMandate(new MandateIntent(
     List.of(

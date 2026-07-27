@@ -1,5 +1,5 @@
 // ovid4j — Java port of OVID (https://github.com/clawdreyhepburn/ovid), Apache-2.0.
-package io.github.mfanti.ovid4j;
+package io.github.marcofanti.ovid4j;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 

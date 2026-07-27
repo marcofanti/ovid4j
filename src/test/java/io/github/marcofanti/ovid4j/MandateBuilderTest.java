@@ -1,14 +1,14 @@
 // ovid4j — Java port of OVID (https://github.com/clawdreyhepburn/ovid), Apache-2.0.
-package io.github.mfanti.ovid4j;
+package io.github.marcofanti.ovid4j;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.github.mfanti.ovid4j.MandateBuilder.BuildResult;
-import io.github.mfanti.ovid4j.MandateBuilder.GrantIntent;
-import io.github.mfanti.ovid4j.MandateBuilder.MandateIntent;
-import io.github.mfanti.ovid4j.MandateBuilder.ResourceConstraint;
+import io.github.marcofanti.ovid4j.MandateBuilder.BuildResult;
+import io.github.marcofanti.ovid4j.MandateBuilder.GrantIntent;
+import io.github.marcofanti.ovid4j.MandateBuilder.MandateIntent;
+import io.github.marcofanti.ovid4j.MandateBuilder.ResourceConstraint;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
