@@ -89,6 +89,7 @@ spawn-task block.
 |---|---|
 | `generateKeypair()` | `Keys.generate()` |
 | `exportPublicKeyBase64` / `importPublicKeyBase64` | `Keys.exportPublicKeyBase64` / `Keys.importPublicKeyBase64` |
+| — (upstream keys are non-extractable) | `Keys.exportPrivateKeyBase64` / `importPrivateKeyBase64` / `importKeyPairBase64` (raw 32-byte seed, = JWK `d`) |
 | `createOvid(options)` | `Ovid.createOvid(CreateOvidOptions)` |
 | `renewOvid(token, keys, ttl)` | `Ovid.renewOvid(token, keys, ttl)` (roots only, same semantics) |
 | `verifyOvid(jwt, { trustedRoots, maxChainDepth })` | `Ovid.verifyOvid(jwt, VerifyOvidOptions)` |
@@ -115,8 +116,10 @@ Intentional differences, all on the strict side:
 3. **The JWT header `typ` must be `ovid+jwt`** and `alg` must be `EdDSA`, per the
    documented wire format (upstream documents but does not currently enforce `typ`).
 4. **Non-extractable keys (upstream's C5) don't map to the JCA.** Java private
-   keys are in-memory objects; the equivalent discipline here is: never serialize
-   `OvidToken.keys()` — nothing in this library will do it for you.
+   keys are in-memory objects. `Keys.exportPrivateKeyBase64` exists solely so
+   keys can live in an external secret manager (see the [example](#example-a-python-root-agent-with-1password-held-keys));
+   the discipline is: private keys go to the secret manager or stay in memory —
+   never to disk, logs, or token payloads.
 
 The wire format is unchanged: canonical chain-link bytes
 (`ovid-chain-link/v1\n<sub>\n<agent_pub>\n<iat>\n<exp>`), raw-32-byte base64url
@@ -130,10 +133,54 @@ Ed25519, so the port implements the ~60-line compact serialization directly
 in Tink for OKP signing). One fixed algorithm, no `alg` negotiation — the
 classic JWT confusion attacks are unrepresentable.
 
+## CLI
+
+`mvn package` builds a self-contained `target/ovid4j-<version>-cli.jar` so
+non-JVM callers can mint and verify tokens via subprocess. Each subcommand
+reads one JSON object on stdin and writes one JSON object to stdout
+(`{"error": ...}` + exit 1 on failure):
+
+```bash
+java -jar target/ovid4j-*-cli.jar keygen
+# {"publicKey":"...","privateKey":"..."}          # base64url raw-32-byte forms
+
+echo '{"name":"me/root","policySet":"permit(...);","keys":{...},"ttlSeconds":1800}' \
+  | java -jar target/ovid4j-*-cli.jar create      # add "parent":{jwt,publicKey,privateKey} to delegate
+# {"jwt":"...","sub":"me/root","exp":...,"publicKey":"...","privateKey":"..."}
+
+echo '{"jwt":"...","trustedRoots":["..."]}' | java -jar target/ovid4j-*-cli.jar verify
+# {"valid":true,"principal":"me/root","chain":["me/root"],"expiresIn":...,"policySet":"..."}
+
+echo '{"policySet":"permit(principal, ...);"}' | java -jar target/ovid4j-*-cli.jar cedar
+# {"valid":true}
+```
+
+## Example: a Python root agent with 1Password-held keys
+
+[`example/`](example/) shows a [pydantic-ai](https://ai.pydantic.dev) agent
+bootstrapping an OVID **root identity** through the CLI jar:
+
+- its unique name is derived from `user@machine:path-under-home` of the script;
+- its Ed25519 keypair is generated on first run and stored in **1Password**
+  (one item per agent, the item title is the unique name — 1Password *is* the
+  agent registry), fetched into memory on every later run, never written to disk;
+- its Cedar mandate is **inferred from the tools the agent registers**
+  (`read_file` → `read`, `write_file` → `write`, `run_command` → `exec`);
+- every run mints a fresh root token and self-verifies it before the agent starts.
+
+```bash
+mvn package                                  # build the CLI jar first
+cd example && uv sync
+uv run pytest -m "not integration"           # unit tier: fake registry, real jar, no LLM
+uv run pytest -m integration                 # real 1Password (needs OP_SERVICE_ACCOUNT_TOKEN
+                                             # + an "OVID Agents" vault the service account can write)
+uv run pydantic-ai-read-write-edit.py        # the agent itself (also needs ANTHROPIC_API_KEY in ../.env)
+```
+
 ## Development
 
 ```bash
-mvn test     # 75 tests, includes golden-fixture interop against TS-minted tokens
+mvn test     # includes golden-fixture interop against TS-minted tokens
 mvn package
 ```
 

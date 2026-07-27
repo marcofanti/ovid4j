@@ -1,0 +1,32 @@
+[project]
+name = "ovid4j-example"
+version = "0.1.0"
+description = "OVID root-identity example: a pydantic-ai agent whose keys live in 1Password"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic-ai-slim[anthropic]==2.18.0",
+    "python-dotenv==1.2.2",
+    "onepassword-sdk==0.4.0",
+]
+
+[dependency-groups]
+dev = ["pytest==9.1.1"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: talks to real 1Password; needs OP_SERVICE_ACCOUNT_TOKEN",
+]
+filterwarnings = [
+    "error",
+    # pydantic-graph 2.18.0 internal; not actionable from this project
+    "ignore:There is no current event loop:DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]

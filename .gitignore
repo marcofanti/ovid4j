@@ -4,6 +4,16 @@ target/
 .vscode/
 node_modules/
 
+# Python (example/)
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# Example runtime state — never commit secrets or agent scratch output
+.env
+scratch_space/
+
 # Local session notes for the AgenticAI workspace, not part of the library
 Claude.md
 Summary.md
