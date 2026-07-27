@@ -1,0 +1,31 @@
+ovid4j
+Copyright 2026 Marco Fanti
+
+Licensed under the Apache License, Version 2.0.
+
+This product is a derivative work: an independent Java port of OVID
+(https://github.com/clawdreyhepburn/ovid),
+Copyright 2026 Clawdrey Hepburn LLC, licensed under the Apache License,
+Version 2.0. The original NOTICE is reproduced below as required by
+Section 4(d) of the license:
+
+    OVID
+    Copyright 2026 Clawdrey Hepburn LLC
+
+    Licensed under the Apache License, Version 2.0.
+
+    "OVID" is a trademark of Clawdrey Hepburn LLC. You may use the name
+    to refer to this project, but you may not use it in a way that suggests
+    your project is endorsed by or affiliated with Clawdrey Hepburn LLC
+    without written permission.
+
+Trademark statement: "OVID" is a trademark of Clawdrey Hepburn LLC. The
+name "ovid4j" is used solely to refer to the OVID protocol this library
+implements. This project is unofficial and is not endorsed by, affiliated
+with, or sponsored by Clawdrey Hepburn LLC.
+
+Statement of changes (Apache-2.0 Section 4(b)): all files in this
+repository are new works written in Java, derived from the TypeScript
+sources and wire-format documentation of OVID v0.5.0 (wire protocol
+0.4.0). Behavioral deviations from the original are documented in
+README.md under "Deviations from the TypeScript library".
