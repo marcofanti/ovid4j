@@ -19,6 +19,9 @@ package = false
 markers = [
     "integration: talks to real 1Password; needs OP_SERVICE_ACCOUNT_TOKEN",
 ]
+log_cli = true
+log_cli_format = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
+log_cli_date_format = "%H:%M:%S"
 filterwarnings = [
     "error",
     # pydantic-graph 2.18.0 internal; not actionable from this project
