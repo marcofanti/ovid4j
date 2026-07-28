@@ -19,13 +19,30 @@ before a single model call happens.
 Private keys exist only in 1Password and process memory — never on disk, never
 in logs (the CLI wrapper logs command + timing only, by design).
 
+## Delegation (sub-agent spawning)
+
+The root agent carries a `spawn_subagent` tool ([`subagent.py`](subagent.py)):
+it mints a **child OVID** (the root signs the chain link; the child binds fresh
+in-memory keys), builds a restricted agent holding only the granted tool
+subset, runs the task, and reports the result together with the child's
+verified chain (`root -> root/child`). Attenuation is enforced twice:
+
+- **actions** — the child's tools must be a subset of the parent's (checked
+  here, before minting; the OVID libraries deliberately don't compare policies);
+- **lifetime** — a child outliving its parent fails at mint time (library rule).
+
+Children are ephemeral: no 1Password item, no spawn tool of their own (the
+chain cannot deepen implicitly). The root's own mandate includes the Cedar
+`delegate` action to cover this (`spawn_subagent` in its inferred tool set).
+
 ## Files
 
-- [`pydantic-ai-read-write-edit.py`](pydantic-ai-read-write-edit.py) — the agent (`build_agent()`) and the entrypoint that bootstraps identity before running
+- [`pydantic-ai-read-write-edit.py`](pydantic-ai-read-write-edit.py) — the agent (`build_agent()`, full or restricted tool set) and the entrypoint that bootstraps identity before running
 - [`ovid_identity.py`](ovid_identity.py) — name derivation, policy inference, the `OvidCli` subprocess bridge, the `Registry` protocol + `OnePasswordRegistry`, and `bootstrap_root_identity()`
+- [`subagent.py`](subagent.py) — delegation: `mint_child_identity()`, `spawn_subagent()`, and the root's spawn tool
 - [`config.py`](config.py) — env-driven `Config`; loads `../.env` then `.env.local` (override)
 - [`event_logging.py`](event_logging.py) — tool events to the log, final response to stdout
-- [`test_ovid_identity.py`](test_ovid_identity.py) / [`conftest.py`](conftest.py) — tests (below) and pytest live-log wiring
+- [`test_ovid_identity.py`](test_ovid_identity.py) / [`test_subagent.py`](test_subagent.py) / [`conftest.py`](conftest.py) — tests (below), shared fixtures, pytest live-log wiring
 - [`.env.local.example`](.env.local.example) — configuration template
 
 ## Setup
@@ -74,7 +91,11 @@ uv run pytest -m integration         # real 1Password (auto-skips without the to
 The unit tier uses a `FakeRegistry`, the **real CLI jar**, and pydantic-ai's
 `TestModel`. It covers: name derivation, mandate inference (including the
 Java-side Cedar validation round-trip), first-run registration, key reuse,
-policy drift, foreign-root rejection, corrupt-key failure, and config parsing.
+policy drift, foreign-root rejection, corrupt-key failure, config parsing,
+and delegation E2E — chain-of-two verified in Java **and in the TypeScript
+reference library** (`test_subagent.py`, needs `../../ovid` built; skips
+otherwise), attenuation refusals (tools ⊄ parent, TTL > parent, no spawn tool
+for children), and a full `main()` run under `TestModel`.
 The integration tier registers a throwaway `test/ovid4j-example/<uuid>` item in
 the real vault, bootstraps twice, and cleans up in teardown.
 

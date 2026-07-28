@@ -162,7 +162,10 @@ bootstrapping an OVID **root identity** through the CLI jar: unique name
 derived from `user@machine:path-under-home`, Ed25519 keys generated on first
 run and stored in **1Password** (one item per agent — 1Password *is* the agent
 registry), Cedar mandate **inferred from the tools the agent registers**, and
-a fresh root token minted and self-verified on every run.
+a fresh root token minted and self-verified on every run. The root can also
+**delegate**: a `spawn_subagent` tool mints child tokens with narrowed
+mandates and runs restricted sub-agents under them — chains verify in Java
+and in the TypeScript reference library alike.
 
 ```bash
 mvn package                                  # build the CLI jar first

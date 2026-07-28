@@ -7,9 +7,7 @@ Integration tier (``-m integration``): real 1Password via OP_SERVICE_ACCOUNT_TOK
 
 from __future__ import annotations
 
-import importlib.util
 import os
-import sys
 import uuid
 from pathlib import Path
 
@@ -17,6 +15,7 @@ import pytest
 from pydantic_ai.models.test import TestModel
 
 from config import Config, load_env
+from conftest import SCRIPT, FakeRegistry, load_example_module
 from ovid_identity import (
     KeyPair,
     OnePasswordRegistry,
@@ -30,53 +29,8 @@ from ovid_identity import (
     infer_policy_set,
 )
 
-EXAMPLE_DIR = Path(__file__).resolve().parent
 load_env()
 
-
-def load_example_module():
-    """Import the hyphen-named example script as a module."""
-    spec = importlib.util.spec_from_file_location(
-        "pydantic_ai_read_write_edit", EXAMPLE_DIR / "pydantic-ai-read-write-edit.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-class FakeRegistry:
-    """In-memory Registry: same contract as OnePasswordRegistry, no 1Password."""
-
-    def __init__(self) -> None:
-        self.items: dict[str, RegisteredAgent] = {}
-
-    def find(self, unique_name: str) -> RegisteredAgent | None:
-        return self.items.get(unique_name)
-
-    def create(self, agent: RegisteredAgent) -> None:
-        if agent.unique_name in self.items:
-            raise AssertionError(f"duplicate registration: {agent.unique_name}")
-        self.items[agent.unique_name] = agent
-
-    def delete(self, unique_name: str) -> None:
-        del self.items[unique_name]
-
-
-@pytest.fixture(scope="session")
-def cli() -> OvidCli:
-    try:
-        return OvidCli.locate()
-    except OvidCliError as error:
-        pytest.skip(str(error))
-
-
-@pytest.fixture
-def registry() -> FakeRegistry:
-    return FakeRegistry()
-
-
-SCRIPT = EXAMPLE_DIR / "pydantic-ai-read-write-edit.py"
 EXAMPLE_TOOLS = ("read_file", "run_command", "write_file")
 
 

@@ -10,9 +10,11 @@ from event_logging import make_event_stream_printer, print_response
 from ovid_identity import (
     OnePasswordRegistry,
     OvidCli,
+    Registry,
     agent_tool_names,
     bootstrap_root_identity,
 )
+from subagent import add_spawn_tool
 
 logger = logging.getLogger("read_write_shell_agent")
 
@@ -26,10 +28,20 @@ def configure_logging(level: str) -> None:
     )
 
 
+BASE_TOOLS = ("read_file", "run_command", "write_file")
+
+
 def build_agent(
-    model: Any = "anthropic:claude-haiku-4-5", project_root: Path | None = None
+    model: Any = "anthropic:claude-haiku-4-5",
+    project_root: Path | None = None,
+    tool_names: tuple[str, ...] | None = None,
 ) -> Agent:
+    """Build the agent with all base tools, or the subset a sub-agent's mandate grants."""
     project_root = project_root or Path(__file__).resolve().parents[1] / "scratch_space"
+    selected = set(BASE_TOOLS if tool_names is None else tool_names)
+    unknown = selected - set(BASE_TOOLS)
+    if unknown:
+        raise ValueError(f"unknown tools requested: {sorted(unknown)} (have {BASE_TOOLS})")
 
     agent = Agent(
         model,
@@ -38,74 +50,99 @@ def build_agent(
         instructions="You are a helpful assistant. Be concise.",
     )
 
-    @agent.tool_plain(docstring_format="google", require_parameter_descriptions=True)
-    def read_file(path: str) -> str:
-        """Read a file.
+    if "read_file" in selected:
 
-        Args:
-            path: The path to the file, relative to the scratch_space directory.
-        """
-        try:
-            return (project_root / path).read_text()
-        except Exception as error:
-            return str(error)
+        @agent.tool_plain(docstring_format="google", require_parameter_descriptions=True)
+        def read_file(path: str) -> str:
+            """Read a file.
 
-    @agent.tool_plain(docstring_format="google", require_parameter_descriptions=True)
-    def write_file(path: str, content: str) -> str:
-        """Write a file.
+            Args:
+                path: The path to the file, relative to the scratch_space directory.
+            """
+            try:
+                return (project_root / path).read_text()
+            except Exception as error:
+                return str(error)
 
-        Args:
-            path: The path to the file, relative to the scratch_space directory.
-            content: The text content to write.
-        """
-        try:
-            full_path = project_root / path
-            full_path.parent.mkdir(parents=True, exist_ok=True)
-            full_path.write_text(content)
-            return f"Wrote {full_path}"
-        except Exception as error:
-            return str(error)
+    if "write_file" in selected:
 
-    @agent.tool_plain(docstring_format="google", require_parameter_descriptions=True)
-    def run_command(command: str) -> str:
-        """Run a shell command.
+        @agent.tool_plain(docstring_format="google", require_parameter_descriptions=True)
+        def write_file(path: str, content: str) -> str:
+            """Write a file.
 
-        Args:
-            command: The shell command to run inside the scratch_space directory.
-        """
-        try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-            )
-            return f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
-        except Exception as error:
-            return str(error)
+            Args:
+                path: The path to the file, relative to the scratch_space directory.
+                content: The text content to write.
+            """
+            try:
+                full_path = project_root / path
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                full_path.write_text(content)
+                return f"Wrote {full_path}"
+            except Exception as error:
+                return str(error)
+
+    if "run_command" in selected:
+
+        @agent.tool_plain(docstring_format="google", require_parameter_descriptions=True)
+        def run_command(command: str) -> str:
+            """Run a shell command.
+
+            Args:
+                command: The shell command to run inside the scratch_space directory.
+            """
+            try:
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=project_root,
+                    capture_output=True,
+                    text=True,
+                )
+                return f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
+            except Exception as error:
+                return str(error)
 
     return agent
 
 
-def main(user_prompt: str) -> None:
+def main(
+    user_prompt: str,
+    *,
+    registry: Registry | None = None,
+    model: Any = None,
+    project_root: Path | None = None,
+) -> None:
+    """Bootstrap identity, arm delegation, run the agent.
+
+    The keyword overrides exist for tests (fake registry, TestModel, tmp
+    scratch dir); production runs use the env-driven defaults.
+    """
     config = Config.from_env()
     configure_logging(config.log_level)
-    agent = build_agent(config.agent_model)
+    agent = build_agent(model or config.agent_model, project_root)
+    cli = OvidCli.locate()
 
     # This program is an OVID root: its identity is this file on this machine,
-    # its keys live in 1Password, and its mandate is inferred from its tools.
+    # its keys live in 1Password, and its mandate is inferred from its tools —
+    # including the delegation grant for the spawn tool registered below.
     identity = bootstrap_root_identity(
         script_path=Path(__file__),
-        tool_names=agent_tool_names(agent),
-        registry=OnePasswordRegistry(vault_title=config.vault_title),
-        cli=OvidCli.locate(),
+        tool_names=(*agent_tool_names(agent), "spawn_subagent"),
+        registry=registry or OnePasswordRegistry(vault_title=config.vault_title),
+        cli=cli,
         ttl_seconds=config.ttl_seconds,
     )
     logger.info(
         "running as OVID root %s (%s registration)",
         identity.unique_name,
         "new" if identity.newly_registered else "existing",
+    )
+    add_spawn_tool(
+        agent,
+        parent=identity,
+        cli=cli,
+        agent_factory=lambda tools: build_agent(model or config.agent_model, project_root, tools),
     )
 
     result = agent.run_sync(user_prompt, event_stream_handler=make_event_stream_printer())

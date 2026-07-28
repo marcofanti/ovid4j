@@ -18,7 +18,7 @@ import socket
 import subprocess
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -46,7 +46,8 @@ class RegistryError(RuntimeError):
 @dataclass(frozen=True)
 class KeyPair:
     public_key: str  # base64url raw 32-byte Ed25519 public key (wire agent_pub)
-    private_key: str  # base64url raw 32-byte Ed25519 seed (JWK d) — never log or persist
+    # base64url raw 32-byte Ed25519 seed (JWK d) — memory only, kept out of repr
+    private_key: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -63,9 +64,24 @@ class RootIdentity:
     jwt: str
     public_key: str
     policy_set: str
+    tool_names: tuple[str, ...]
     expires_at: int
     newly_registered: bool
     policy_drift: bool
+    # Held so the root can sign child chain links (delegation); memory only.
+    keys: KeyPair = field(repr=False)
+
+
+@dataclass(frozen=True)
+class ChildIdentity:
+    unique_name: str
+    jwt: str
+    public_key: str
+    policy_set: str
+    tool_names: tuple[str, ...]
+    expires_at: int
+    chain: tuple[str, ...]
+    keys: KeyPair = field(repr=False)
 
 
 # ── unique naming ─────────────────────────────────────────────────────────
@@ -94,6 +110,7 @@ def agent_unique_name(
 
 _FILE_SCOPE_TOOLS = {"read_file": "read", "write_file": "write"}
 _SHELL_TOOLS = {"run_command": "exec"}
+_BARE_TOOLS = {"spawn_subagent": "delegate"}
 
 
 def infer_policy_set(tool_names: Sequence[str], *, scope: str = "scratch_space") -> str:
@@ -119,6 +136,9 @@ def infer_policy_set(tool_names: Sequence[str], *, scope: str = "scratch_space")
                 f'permit(principal, action == Ovid::Action::"{action}", '
                 f'resource == Ovid::Shell::"sh");'
             )
+        elif tool in _BARE_TOOLS:
+            action = _BARE_TOOLS[tool]
+            statements.append(f'permit(principal, action == Ovid::Action::"{action}", resource);')
         else:
             raise PolicyInferenceError(
                 f'no Cedar mapping for tool "{tool}" — add it to ovid_identity or rename the tool'
@@ -176,6 +196,30 @@ class OvidCli:
                 "policySet": policy_set,
                 "ttlSeconds": ttl_seconds,
                 "keys": {"publicKey": keys.public_key, "privateKey": keys.private_key},
+            },
+        )
+
+    def create_child(
+        self,
+        name: str,
+        policy_set: str,
+        parent_jwt: str,
+        parent_keys: KeyPair,
+        *,
+        ttl_seconds: int,
+    ) -> dict[str, Any]:
+        """Mint a child token: the parent signs the chain link, the child gets fresh keys."""
+        return self._run(
+            "create",
+            {
+                "name": name,
+                "policySet": policy_set,
+                "ttlSeconds": ttl_seconds,
+                "parent": {
+                    "jwt": parent_jwt,
+                    "publicKey": parent_keys.public_key,
+                    "privateKey": parent_keys.private_key,
+                },
             },
         )
 
@@ -412,7 +456,9 @@ def bootstrap_root_identity(
         jwt=minted["jwt"],
         public_key=keys.public_key,
         policy_set=policy_set,
+        tool_names=tuple(sorted(tool_names)),
         expires_at=int(minted["exp"]),
         newly_registered=existing is None,
         policy_drift=existing is not None and existing.policy_set != policy_set,
+        keys=keys,
     )
