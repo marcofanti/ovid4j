@@ -1,12 +1,11 @@
 import logging
-import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
 from pydantic_ai import Agent
 
+from config import Config
 from event_logging import make_event_stream_printer, print_response
 from ovid_identity import (
     OnePasswordRegistry,
@@ -15,15 +14,13 @@ from ovid_identity import (
     bootstrap_root_identity,
 )
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-
 logger = logging.getLogger("read_write_shell_agent")
 
 
-def configure_logging() -> None:
-    """Timestamped logs to stderr; LOG_LEVEL=DEBUG adds CLI timings and mandates."""
+def configure_logging(level: str) -> None:
+    """Timestamped logs to stderr; DEBUG adds CLI timings and mandates."""
     logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+        level=level,
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
@@ -92,16 +89,18 @@ def build_agent(
 
 
 def main(user_prompt: str) -> None:
-    configure_logging()
-    agent = build_agent()
+    config = Config.from_env()
+    configure_logging(config.log_level)
+    agent = build_agent(config.agent_model)
 
     # This program is an OVID root: its identity is this file on this machine,
     # its keys live in 1Password, and its mandate is inferred from its tools.
     identity = bootstrap_root_identity(
         script_path=Path(__file__),
         tool_names=agent_tool_names(agent),
-        registry=OnePasswordRegistry(),
+        registry=OnePasswordRegistry(vault_title=config.vault_title),
         cli=OvidCli.locate(),
+        ttl_seconds=config.ttl_seconds,
     )
     logger.info(
         "running as OVID root %s (%s registration)",

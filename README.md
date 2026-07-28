@@ -174,8 +174,14 @@ cd example && uv sync
 uv run pytest -m "not integration"           # unit tier: fake registry, real jar, no LLM
 uv run pytest -m integration                 # real 1Password (needs OP_SERVICE_ACCOUNT_TOKEN
                                              # + an "OVID Agents" vault the service account can write)
-uv run pydantic-ai-read-write-edit.py        # the agent itself (also needs ANTHROPIC_API_KEY in ../.env)
+uv run pydantic-ai-read-write-edit.py        # the agent itself (also needs ANTHROPIC_API_KEY)
 ```
+
+Configuration is environment-driven (`example/config.py`): the repo-root
+`.env` is loaded first, then `example/.env.local` overrides it (both
+gitignored). Copy [`example/.env.local.example`](example/.env.local.example)
+to `.env.local` to set `LOG_LEVEL`, `AGENT_MODEL`, `OVID_VAULT_TITLE`,
+`OVID_TTL_SECONDS`, and the secrets.
 
 ## Development
 

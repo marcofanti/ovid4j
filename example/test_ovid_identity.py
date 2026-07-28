@@ -14,9 +14,9 @@ import uuid
 from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
 from pydantic_ai.models.test import TestModel
 
+from config import Config, load_env
 from ovid_identity import (
     KeyPair,
     OnePasswordRegistry,
@@ -31,7 +31,7 @@ from ovid_identity import (
 )
 
 EXAMPLE_DIR = Path(__file__).resolve().parent
-load_dotenv(EXAMPLE_DIR.parent / ".env")
+load_env()
 
 
 def load_example_module():
@@ -78,6 +78,48 @@ def registry() -> FakeRegistry:
 
 SCRIPT = EXAMPLE_DIR / "pydantic-ai-read-write-edit.py"
 EXAMPLE_TOOLS = ("read_file", "run_command", "write_file")
+
+
+# ── configuration ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def bare_env(monkeypatch):
+    """No dotenv files, no config env vars: from_env sees only explicit values."""
+    monkeypatch.setattr("config.load_dotenv", lambda *_a, **_k: None)
+    for var in ("LOG_LEVEL", "AGENT_MODEL", "OVID_VAULT_TITLE", "OVID_TTL_SECONDS"):
+        monkeypatch.delenv(var, raising=False)
+    return monkeypatch
+
+
+def test_config_defaults(bare_env):
+    assert Config.from_env() == Config(
+        log_level="INFO",
+        agent_model="anthropic:claude-haiku-4-5",
+        vault_title="OVID Agents",
+        ttl_seconds=1800,
+    )
+
+
+def test_config_reads_overrides_and_normalizes_level(bare_env):
+    bare_env.setenv("LOG_LEVEL", "debug")
+    bare_env.setenv("AGENT_MODEL", "anthropic:claude-sonnet-5")
+    bare_env.setenv("OVID_VAULT_TITLE", "Agents Test")
+    bare_env.setenv("OVID_TTL_SECONDS", "600")
+    config = Config.from_env()
+    assert config.log_level == "DEBUG"
+    assert config.agent_model == "anthropic:claude-sonnet-5"
+    assert config.vault_title == "Agents Test"
+    assert config.ttl_seconds == 600
+
+
+def test_config_rejects_bad_ttl(bare_env):
+    bare_env.setenv("OVID_TTL_SECONDS", "half an hour")
+    with pytest.raises(ValueError, match="OVID_TTL_SECONDS"):
+        Config.from_env()
+    bare_env.setenv("OVID_TTL_SECONDS", "-5")
+    with pytest.raises(ValueError, match="positive"):
+        Config.from_env()
 
 
 # ── unique name derivation ────────────────────────────────────────────────
@@ -238,7 +280,7 @@ needs_1password = pytest.mark.skipif(
 class TestOnePasswordRegistry:
     @pytest.fixture
     def op_registry(self) -> OnePasswordRegistry:
-        return OnePasswordRegistry()
+        return OnePasswordRegistry(vault_title=Config.from_env().vault_title)
 
     @pytest.fixture
     def test_name(self, op_registry: OnePasswordRegistry):

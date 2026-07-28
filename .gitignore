@@ -11,7 +11,9 @@ __pycache__/
 .ruff_cache/
 
 # Example runtime state — never commit secrets or agent scratch output
+# (.env.local.example is the committed template)
 .env
+.env.local
 scratch_space/
 
 # Local session notes for the AgenticAI workspace, not part of the library
