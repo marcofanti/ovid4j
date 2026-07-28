@@ -158,30 +158,22 @@ echo '{"policySet":"permit(principal, ...);"}' | java -jar target/ovid4j-*-cli.j
 ## Example: a Python root agent with 1Password-held keys
 
 [`example/`](example/) shows a [pydantic-ai](https://ai.pydantic.dev) agent
-bootstrapping an OVID **root identity** through the CLI jar:
-
-- its unique name is derived from `user@machine:path-under-home` of the script;
-- its Ed25519 keypair is generated on first run and stored in **1Password**
-  (one item per agent, the item title is the unique name — 1Password *is* the
-  agent registry), fetched into memory on every later run, never written to disk;
-- its Cedar mandate is **inferred from the tools the agent registers**
-  (`read_file` → `read`, `write_file` → `write`, `run_command` → `exec`);
-- every run mints a fresh root token and self-verifies it before the agent starts.
+bootstrapping an OVID **root identity** through the CLI jar: unique name
+derived from `user@machine:path-under-home`, Ed25519 keys generated on first
+run and stored in **1Password** (one item per agent — 1Password *is* the agent
+registry), Cedar mandate **inferred from the tools the agent registers**, and
+a fresh root token minted and self-verified on every run.
 
 ```bash
 mvn package                                  # build the CLI jar first
 cd example && uv sync
 uv run pytest -m "not integration"           # unit tier: fake registry, real jar, no LLM
-uv run pytest -m integration                 # real 1Password (needs OP_SERVICE_ACCOUNT_TOKEN
-                                             # + an "OVID Agents" vault the service account can write)
-uv run pydantic-ai-read-write-edit.py        # the agent itself (also needs ANTHROPIC_API_KEY)
+uv run pytest -m integration                 # real 1Password (service account + vault required)
+uv run pydantic-ai-read-write-edit.py        # the agent itself (needs ANTHROPIC_API_KEY)
 ```
 
-Configuration is environment-driven (`example/config.py`): the repo-root
-`.env` is loaded first, then `example/.env.local` overrides it (both
-gitignored). Copy [`example/.env.local.example`](example/.env.local.example)
-to `.env.local` to set `LOG_LEVEL`, `AGENT_MODEL`, `OVID_VAULT_TITLE`,
-`OVID_TTL_SECONDS`, and the secrets.
+Setup, configuration (`.env` / `.env.local`), architecture, and test details:
+[`example/README.md`](example/README.md).
 
 ## Development
 
